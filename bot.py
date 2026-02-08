@@ -182,7 +182,7 @@ async def blackjack(interaction: discord.Interaction, bet: int):
 
     if bet <= 0 or bet > p["balance"]:
         await interaction.response.send_message(
-            "❌ Nieprawidłowy zakład.",
+            "❌ Nieprawidłowy zakład",
             ephemeral=True
         )
         return
@@ -202,14 +202,16 @@ async def daily(interaction: discord.Interaction):
     now = int(time.time())
     cooldown = 24 * 60 * 60
 
-    remaining = cooldown - (now - p["last_daily"])
+    remaining = cooldown - (now - p.get("last_daily", 0))
     if remaining > 0:
         h = remaining // 3600
         m = (remaining % 3600) // 60
-        await interaction.response.send_message(
-            f"⏳ Daily za {h}h {m}m",
-            ephemeral=True
+        embed = discord.Embed(
+            title="⏳ Daily już odebrane!",
+            description=f"Spróbuj ponownie za **{h}h {m}m**",
+            color=discord.Color.orange()
         )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     p["balance"] += 6000
