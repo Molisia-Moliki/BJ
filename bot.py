@@ -97,26 +97,42 @@ class BlackjackView(discord.ui.View):
         while hand_value(dealer) < 17:
             dealer.append(draw_card())
 
-        pv = hand_value(self.game["player"])
-        dv = hand_value(dealer)
+        player_val = hand_value(self.game["player"])
+        dealer_val = hand_value(dealer)
         bet = self.game["bet"]
 
         p["games"] += 1
 
-        if dv > 21 or pv > dv:
+        # 💥 Bust gracza
+        if player_val > 21:
+            p["balance"] -= bet
+            p["losses"] += 1
+            result_text = f"💥 **Bust!** -{bet} 💰"
+            color = discord.Color.red()
+
+        # 🎉 Gracz ≤21 i krupier >21
+        elif dealer_val > 21:
             p["balance"] += bet
             p["wins"] += 1
             result_text = f"🎉 **Wygrana!** +{bet} 💰"
             color = discord.Color.green()
-        elif pv < dv:
-            p["balance"] -= bet
-            p["losses"] += 1
-            result_text = f"💀 **Przegrana!** -{bet} 💰"
-            color = discord.Color.red()
+
+        # 🔄 Normalne porównanie
         else:
-            p["draws"] += 1
-            result_text = "🤝 **Remis**"
-            color = discord.Color.orange()
+            if player_val > dealer_val:
+                p["balance"] += bet
+                p["wins"] += 1
+                result_text = f"🎉 **Wygrana!** +{bet} 💰"
+                color = discord.Color.green()
+            elif player_val < dealer_val:
+                p["balance"] -= bet
+                p["losses"] += 1
+                result_text = f"💀 **Przegrana!** -{bet} 💰"
+                color = discord.Color.red()
+            else:
+                p["draws"] += 1
+                result_text = "🤝 **Remis**"
+                color = discord.Color.orange()
 
         save_players()
         self.stop()
@@ -125,8 +141,8 @@ class BlackjackView(discord.ui.View):
             title="🃏 BlackJack - Koniec gry",
             color=color
         )
-        embed.add_field(name="Twoje karty", value=f"{self.game['player']} (= {pv})", inline=False)
-        embed.add_field(name="Krupier", value=f"{dealer} (= {dv})", inline=False)
+        embed.add_field(name="Twoje karty", value=f"{self.game['player']} (= {player_val})", inline=False)
+        embed.add_field(name="Krupier", value=f"{dealer} (= {dealer_val})", inline=False)
         embed.add_field(name="Wynik", value=result_text, inline=False)
         embed.set_footer(text=f"Saldo: {p['balance']} 💰")
         await interaction.response.edit_message(embed=embed, view=None)
@@ -182,7 +198,7 @@ async def blackjack(interaction: discord.Interaction, bet: int):
 
     if bet <= 0 or bet > p["balance"]:
         await interaction.response.send_message(
-            "❌ Nieprawidłowy zakład",
+            "❌ Nieprawidłowy zakład.",
             ephemeral=True
         )
         return
