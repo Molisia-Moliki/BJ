@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 import random
 import asyncio
-from economy import get_player, save_players  # upewnij się, że masz economy.py z funkcjami get_player/save_players
+from economy import get_player, save_players
 
 # ---------- KARTY ----------
 suits = ["♠", "♥", "♦", "♣"]
@@ -34,12 +34,20 @@ def hand_text(hand):
 # ---------- VIEW ----------
 class BlackjackView(discord.ui.View):
     def __init__(self, interaction, game):
-        super().__init__(timeout=60)
+        super().__init__(timeout=120)  # zwiększony timeout do 2 minut
         self.interaction = interaction
         self.game = game
 
     async def interaction_check(self, interaction):
         return interaction.user.id == self.interaction.user.id
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        try:
+            await self.interaction.edit_original_response(view=self)
+        except discord.NotFound:
+            pass
 
     def build_embed(self, reveal=False, end=False, result=None, color=discord.Color.green()):
         if reveal:
@@ -92,15 +100,21 @@ class BlackjackView(discord.ui.View):
             title="🎴 Dobieranie karty...",
             color=discord.Color.blue()
         )
-        await interaction.response.edit_message(embed=loading, view=None)
+        try:
+            await interaction.response.edit_message(embed=loading, view=None)
+        except discord.NotFound:
+            return
         await asyncio.sleep(0.8)
 
         self.game[target].append(draw_card())
 
-        await interaction.edit_original_response(
-            embed=self.build_embed(),
-            view=self
-        )
+        try:
+            await interaction.edit_original_response(
+                embed=self.build_embed(),
+                view=self
+            )
+        except discord.NotFound:
+            pass
 
     async def finish(self, interaction):
         dealer = self.game["dealer"]
@@ -133,15 +147,18 @@ class BlackjackView(discord.ui.View):
         save_players()
         self.stop()
 
-        await interaction.edit_original_response(
-            embed=self.build_embed(
-                reveal=True,
-                end=True,
-                result=result,
-                color=color
-            ),
-            view=None
-        )
+        try:
+            await interaction.edit_original_response(
+                embed=self.build_embed(
+                    reveal=True,
+                    end=True,
+                    result=result,
+                    color=color
+                ),
+                view=None
+            )
+        except discord.NotFound:
+            pass
 
     @discord.ui.button(label="🎴 Hit", style=discord.ButtonStyle.green)
     async def hit(self, interaction, button):
@@ -153,16 +170,18 @@ class BlackjackView(discord.ui.View):
             p["games"] += 1
             save_players()
             self.stop()
-
-            await interaction.edit_original_response(
-                embed=self.build_embed(
-                    reveal=True,
-                    end=True,
-                    result="💥 Bust!",
-                    color=discord.Color.red()
-                ),
-                view=None
-            )
+            try:
+                await interaction.edit_original_response(
+                    embed=self.build_embed(
+                        reveal=True,
+                        end=True,
+                        result="💥 Bust!",
+                        color=discord.Color.red()
+                    ),
+                    view=None
+                )
+            except discord.NotFound:
+                pass
 
     @discord.ui.button(label="✋ Stand", style=discord.ButtonStyle.red)
     async def stand(self, interaction, button):
