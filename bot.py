@@ -4,6 +4,7 @@ from discord import app_commands
 import random
 import json
 import os
+import asyncio
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 PLAYER_FILE = "players.json"
@@ -13,7 +14,6 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------- KARTY ----------
-
 cards = {
     "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
     "7": 7, "8": 8, "9": 9, "10": 10,
@@ -32,7 +32,6 @@ def hand_value(hand):
     return value
 
 # ---------- DANE GRACZY ----------
-
 def load_players():
     if not os.path.exists(PLAYER_FILE):
         return {}
@@ -59,7 +58,6 @@ def get_player(uid):
     return players[uid]
 
 # ---------- VIEW / BUTTONS ----------
-
 class BlackjackView(discord.ui.View):
     def __init__(self, interaction, game):
         super().__init__(timeout=60)
@@ -188,7 +186,6 @@ class BlackjackView(discord.ui.View):
         await self.finish_game(interaction)
 
 # ---------- SLASH COMMANDS ----------
-
 @bot.event
 async def on_ready():
     await bot.tree.sync()
@@ -228,4 +225,11 @@ async def stats(interaction: discord.Interaction):
         ephemeral=True
     )
 
+# ---------- KEEP ALIVE ----------
 bot.run(TOKEN)
+
+# Keep alive loop dla Railway
+try:
+    asyncio.get_event_loop().run_forever()
+except KeyboardInterrupt:
+    pass
