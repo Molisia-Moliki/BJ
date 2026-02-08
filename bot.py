@@ -71,14 +71,24 @@ class BlackjackView(discord.ui.View):
     async def interaction_check(self, interaction):
         return interaction.user.id == self.interaction.user.id
 
-    def render(self):
-        return (
-            f"🃏 **BlackJack**\n"
-            f"Zakład: {self.game['bet']} 💰\n\n"
-            f"Twoje karty: {self.game['player']} "
-            f"(= {hand_value(self.game['player'])})\n"
-            f"Karta krupiera: {self.game['dealer'][0]}"
+    def render_embed(self):
+        embed = discord.Embed(
+            title="🃏 BlackJack",
+            description=f"**Zakład:** {self.game['bet']} 💰",
+            color=discord.Color.gold()
         )
+        embed.add_field(
+            name="Twoje karty",
+            value=f"{self.game['player']} (= {hand_value(self.game['player'])})",
+            inline=False
+        )
+        embed.add_field(
+            name="Krupier",
+            value=f"{self.game['dealer'][0]} ❓",
+            inline=False
+        )
+        embed.set_footer(text="🎴 Hit | ✋ Stand | 💸 Double Down")
+        return embed
 
     async def finish(self, interaction):
         dealer = self.game["dealer"]
@@ -96,34 +106,35 @@ class BlackjackView(discord.ui.View):
         if dv > 21 or pv > dv:
             p["balance"] += bet
             p["wins"] += 1
-            result = f"🎉 Wygrana +{bet}"
+            result_text = f"🎉 **Wygrana!** +{bet} 💰"
+            color = discord.Color.green()
         elif pv < dv:
             p["balance"] -= bet
             p["losses"] += 1
-            result = f"💀 Przegrana -{bet}"
+            result_text = f"💀 **Przegrana!** -{bet} 💰"
+            color = discord.Color.red()
         else:
             p["draws"] += 1
-            result = "🤝 Remis"
+            result_text = "🤝 **Remis**"
+            color = discord.Color.orange()
 
         save_players()
         self.stop()
 
-        await interaction.response.edit_message(
-            content=(
-                f"🃏 **Koniec gry**\n"
-                f"Ty: {self.game['player']} (= {pv})\n"
-                f"Krupier: {dealer} (= {dv})\n\n"
-                f"{result}\n"
-                f"Saldo: {p['balance']} 💰"
-            ),
-            view=None
+        embed = discord.Embed(
+            title="🃏 BlackJack - Koniec gry",
+            color=color
         )
+        embed.add_field(name="Twoje karty", value=f"{self.game['player']} (= {pv})", inline=False)
+        embed.add_field(name="Krupier", value=f"{dealer} (= {dv})", inline=False)
+        embed.add_field(name="Wynik", value=result_text, inline=False)
+        embed.set_footer(text=f"Saldo: {p['balance']} 💰")
+        await interaction.response.edit_message(embed=embed, view=None)
 
     @discord.ui.button(label="🎴 Hit", style=discord.ButtonStyle.green)
     async def hit(self, interaction, button):
         self.game["player"].append(draw_card())
         value = hand_value(self.game["player"])
-
         if value > 21:
             p = get_player(interaction.user.id)
             p["balance"] -= self.game["bet"]
@@ -132,19 +143,14 @@ class BlackjackView(discord.ui.View):
             save_players()
             self.stop()
 
-            await interaction.response.edit_message(
-                content=(
-                    f"💥 **Bust!**\n"
-                    f"Karty: {self.game['player']} (= {value})\n"
-                    f"Saldo: {p['balance']} 💰"
-                ),
-                view=None
+            embed = discord.Embed(
+                title="💥 Bust!",
+                description=f"Karty: {self.game['player']} (= {value})\nSaldo: {p['balance']} 💰",
+                color=discord.Color.red()
             )
+            await interaction.response.edit_message(embed=embed, view=None)
         else:
-            await interaction.response.edit_message(
-                content=self.render(),
-                view=self
-            )
+            await interaction.response.edit_message(embed=self.render_embed(), view=self)
 
     @discord.ui.button(label="✋ Stand", style=discord.ButtonStyle.red)
     async def stand(self, interaction, button):
@@ -159,7 +165,6 @@ class BlackjackView(discord.ui.View):
                 ephemeral=True
             )
             return
-
         self.game["bet"] *= 2
         self.game["player"].append(draw_card())
         await self.finish(interaction)
@@ -177,7 +182,7 @@ async def blackjack(interaction: discord.Interaction, bet: int):
 
     if bet <= 0 or bet > p["balance"]:
         await interaction.response.send_message(
-            "❌ Nieprawidłowy zakład",
+            "❌ Nieprawidłowy zakład.",
             ephemeral=True
         )
         return
@@ -189,7 +194,7 @@ async def blackjack(interaction: discord.Interaction, bet: int):
     }
 
     view = BlackjackView(interaction, game)
-    await interaction.response.send_message(view.render(), view=view)
+    await interaction.response.send_message(embed=view.render_embed(), view=view)
 
 @bot.tree.command(name="daily", description="Daily reward 6000 💰 (24h)")
 async def daily(interaction: discord.Interaction):
@@ -211,21 +216,25 @@ async def daily(interaction: discord.Interaction):
     p["last_daily"] = now
     save_players()
 
-    await interaction.response.send_message(
-        f"🎁 **DAILY!** +6000 💰\nSaldo: {p['balance']} 💰"
+    embed = discord.Embed(
+        title="🎁 Daily Reward!",
+        description=f"+6000 💰\nSaldo: {p['balance']} 💰",
+        color=discord.Color.green()
     )
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="stats", description="Twoje statystyki")
 async def stats(interaction: discord.Interaction):
     p = get_player(interaction.user.id)
-    await interaction.response.send_message(
-        f"📊 **Statystyki**\n"
-        f"💰 Saldo: {p['balance']}\n"
-        f"🎲 Gry: {p['games']}\n"
-        f"🏆 Wygrane: {p['wins']}\n"
-        f"💀 Przegrane: {p['losses']}\n"
-        f"🤝 Remisy: {p['draws']}",
-        ephemeral=True
+    embed = discord.Embed(
+        title=f"📊 Statystyki {interaction.user.name}",
+        color=discord.Color.blurple()
     )
+    embed.add_field(name="💰 Saldo", value=p["balance"], inline=True)
+    embed.add_field(name="🎲 Gry", value=p["games"], inline=True)
+    embed.add_field(name="🏆 Wygrane", value=p["wins"], inline=True)
+    embed.add_field(name="💀 Przegrane", value=p["losses"], inline=True)
+    embed.add_field(name="🤝 Remisy", value=p["draws"], inline=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 bot.run(TOKEN)
