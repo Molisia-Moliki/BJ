@@ -36,45 +36,53 @@ class BlackjackView(discord.ui.View):
         return interaction.user.id == self.interaction.user.id
 
     def embed(self, reveal=False, end=False, result=None, color=discord.Color.green()):
-        dealer_hand = (
-            hand_text(self.game["dealer"])
-            if reveal else f"{self.game['dealer'][0]} ❓"
-        )
+    dealer_hand = (
+        hand_text(self.game["dealer"])
+        if reveal else f"{self.game['dealer'][0]} ❓"
+    )
 
-        embed = discord.Embed(
-            title="🃏 BlackJack",
-            color=color
-        )
+    dealer_value = ""
+    if reveal:
+        dealer_value = f"**({hand_value(self.game['dealer'])})**"
 
+    embed = discord.Embed(
+        title="🃏 BlackJack",
+        color=color
+    )
+
+    embed.add_field(
+        name="👤 Twoje karty",
+        value=f"{hand_text(self.game['player'])}\n**({hand_value(self.game['player'])})**",
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎩 Krupier",
+        value=f"{dealer_hand}\n{dealer_value}",
+        inline=False
+    )
+
+    embed.add_field(
+        name="💰 Zakład",
+        value=str(self.game["bet"]),
+        inline=True
+    )
+
+    embed.add_field(
+        name="💳 Saldo",
+        value=str(get_player(self.interaction.user.id)["balance"]),
+        inline=True
+    )
+
+    if end and result:
         embed.add_field(
-            name="👤 Twoje karty",
-            value=f"{hand_text(self.game['player'])}\n**({hand_value(self.game['player'])})**",
+            name="📢 Wynik",
+            value=result,
             inline=False
         )
 
-        embed.add_field(
-            name="🎩 Krupier",
-            value=f"{dealer_hand}\n"
-                  f"{'' if not reveal else f'**({hand_value(self.game['dealer'])})**'}",
-            inline=False
-        )
+    return embed
 
-        embed.add_field(
-            name="💰 Zakład",
-            value=f"{self.game['bet']}",
-            inline=True
-        )
-
-        embed.add_field(
-            name="💳 Saldo",
-            value=f"{get_player(self.interaction.user.id)['balance']}",
-            inline=True
-        )
-
-        if end and result:
-            embed.add_field(name="📢 Wynik", value=result, inline=False)
-
-        return embed
 
     async def finish(self, interaction):
         dealer = self.game["dealer"]
