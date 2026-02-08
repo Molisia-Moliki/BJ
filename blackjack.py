@@ -34,7 +34,7 @@ def hand_text(hand):
 # ---------- VIEW ----------
 class BlackjackView(discord.ui.View):
     def __init__(self, interaction, game):
-        super().__init__(timeout=120)  # zwiększony timeout do 2 minut
+        super().__init__(timeout=120)  # 2 min timeout
         self.interaction = interaction
         self.game = game
 
@@ -61,25 +61,21 @@ class BlackjackView(discord.ui.View):
             title="🃏 BlackJack",
             color=color
         )
-
         embed.add_field(
             name="👤 Twoje karty",
             value=f"{hand_text(self.game['player'])}\n**({hand_value(self.game['player'])})**",
             inline=False
         )
-
         embed.add_field(
             name="🎩 Krupier",
             value=f"{dealer_hand}\n{dealer_value}",
             inline=False
         )
-
         embed.add_field(
             name="💰 Zakład",
             value=str(self.game["bet"]),
             inline=True
         )
-
         embed.add_field(
             name="💳 Saldo",
             value=str(get_player(self.interaction.user.id)["balance"]),
@@ -87,19 +83,11 @@ class BlackjackView(discord.ui.View):
         )
 
         if end and result:
-            embed.add_field(
-                name="📢 Wynik",
-                value=result,
-                inline=False
-            )
-
+            embed.add_field(name="📢 Wynik", value=result, inline=False)
         return embed
 
     async def animated_draw(self, interaction, target):
-        loading = discord.Embed(
-            title="🎴 Dobieranie karty...",
-            color=discord.Color.blue()
-        )
+        loading = discord.Embed(title="🎴 Dobieranie karty...", color=discord.Color.blue())
         try:
             await interaction.response.edit_message(embed=loading, view=None)
         except discord.NotFound:
@@ -109,10 +97,7 @@ class BlackjackView(discord.ui.View):
         self.game[target].append(draw_card())
 
         try:
-            await interaction.edit_original_response(
-                embed=self.build_embed(),
-                view=self
-            )
+            await interaction.edit_original_response(embed=self.build_embed(), view=self)
         except discord.NotFound:
             pass
 
@@ -133,96 +118,3 @@ class BlackjackView(discord.ui.View):
             p["balance"] += bet
             p["wins"] += 1
             result = f"🎉 Wygrana +{bet}"
-            color = discord.Color.purple()
-        elif pv < dv:
-            p["balance"] -= bet
-            p["losses"] += 1
-            result = f"💀 Przegrana -{bet}"
-            color = discord.Color.red()
-        else:
-            p["draws"] += 1
-            result = "🤝 Remis"
-            color = discord.Color.gold()
-
-        save_players()
-        self.stop()
-
-        try:
-            await interaction.edit_original_response(
-                embed=self.build_embed(
-                    reveal=True,
-                    end=True,
-                    result=result,
-                    color=color
-                ),
-                view=None
-            )
-        except discord.NotFound:
-            pass
-
-    @discord.ui.button(label="🎴 Hit", style=discord.ButtonStyle.green)
-    async def hit(self, interaction, button):
-        await self.animated_draw(interaction, "player")
-        if hand_value(self.game["player"]) > 21:
-            p = get_player(interaction.user.id)
-            p["balance"] -= self.game["bet"]
-            p["losses"] += 1
-            p["games"] += 1
-            save_players()
-            self.stop()
-            try:
-                await interaction.edit_original_response(
-                    embed=self.build_embed(
-                        reveal=True,
-                        end=True,
-                        result="💥 Bust!",
-                        color=discord.Color.red()
-                    ),
-                    view=None
-                )
-            except discord.NotFound:
-                pass
-
-    @discord.ui.button(label="✋ Stand", style=discord.ButtonStyle.red)
-    async def stand(self, interaction, button):
-        await self.finish(interaction)
-
-    @discord.ui.button(label="💸 Double", style=discord.ButtonStyle.blurple)
-    async def double(self, interaction, button):
-        p = get_player(interaction.user.id)
-        if p["balance"] < self.game["bet"]:
-            await interaction.response.send_message(
-                "❌ Brak środków",
-                ephemeral=True
-            )
-            return
-
-        self.game["bet"] *= 2
-        await self.animated_draw(interaction, "player")
-        await self.finish(interaction)
-
-# ---------- SETUP ----------
-def setup(bot):
-    @bot.tree.command(name="blackjack", description="Zagraj w BlackJacka")
-    @app_commands.describe(bet="Kwota zakładu")
-    async def blackjack(interaction: discord.Interaction, bet: int):
-        p = get_player(interaction.user.id)
-
-        if bet <= 0 or bet > p["balance"]:
-            await interaction.response.send_message(
-                "❌ Nieprawidłowy zakład",
-                ephemeral=True
-            )
-            return
-
-        game = {
-            "player": [draw_card(), draw_card()],
-            "dealer": [draw_card(), draw_card()],
-            "bet": bet
-        }
-
-        view = BlackjackView(interaction, game)
-        await interaction.response.send_message(
-            embed=view.build_embed(),
-            view=view
-        )
