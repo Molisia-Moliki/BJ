@@ -1,9 +1,12 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import random
 import json
 import os
+import time
 
+# ---------- CONFIG ----------
 TOKEN = os.getenv("DISCORD_TOKEN")
 PLAYER_FILE = "players.json"
 START_MONEY = 1000
@@ -12,7 +15,6 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------- KARTY ----------
-
 cards = {
     "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
     "7": 7, "8": 8, "9": 9, "10": 10,
@@ -30,8 +32,7 @@ def hand_value(hand):
         aces -= 1
     return value
 
-# ---------- DANE GRACZY ----------
-
+# ---------- DANE ----------
 def load_players():
     if not os.path.exists(PLAYER_FILE):
         return {}
@@ -52,21 +53,23 @@ def get_player(uid):
             "wins": 0,
             "losses": 0,
             "draws": 0,
-            "games": 0
+            "games": 0,
+            "last_daily": 0
         }
         save_players()
+    else:
+        players[uid].setdefault("last_daily", 0)
     return players[uid]
 
-# ---------- VIEW / PRZYCISKI ----------
-
+# ---------- BLACKJACK VIEW ----------
 class BlackjackView(discord.ui.View):
-    def __init__(self, ctx, game):
+    def __init__(self, interaction, game):
         super().__init__(timeout=60)
-        self.ctx = ctx
+        self.interaction = interaction
         self.game = game
 
     async def interaction_check(self, interaction):
-        return interaction.user.id == self.ctx.author.id
+        return interaction.user.id == self.interaction.user.id
 
     def render(self):
         return (
@@ -77,27 +80,27 @@ class BlackjackView(discord.ui.View):
             f"Karta krupiera: {self.game['dealer'][0]}"
         )
 
-    async def finish_game(self, interaction):
+    async def finish(self, interaction):
         dealer = self.game["dealer"]
-        p = get_player(self.ctx.author.id)
+        p = get_player(interaction.user.id)
 
         while hand_value(dealer) < 17:
             dealer.append(draw_card())
 
-        player_value = hand_value(self.game["player"])
-        dealer_value = hand_value(dealer)
+        pv = hand_value(self.game["player"])
+        dv = hand_value(dealer)
         bet = self.game["bet"]
 
         p["games"] += 1
 
-        if dealer_value > 21 or player_value > dealer_value:
+        if dv > 21 or pv > dv:
             p["balance"] += bet
             p["wins"] += 1
-            result = f"🎉 Wygrana +{bet} 💰"
-        elif player_value < dealer_value:
+            result = f"🎉 Wygrana +{bet}"
+        elif pv < dv:
             p["balance"] -= bet
             p["losses"] += 1
-            result = f"💀 Przegrana -{bet} 💰"
+            result = f"💀 Przegrana -{bet}"
         else:
             p["draws"] += 1
             result = "🤝 Remis"
@@ -108,22 +111,21 @@ class BlackjackView(discord.ui.View):
         await interaction.response.edit_message(
             content=(
                 f"🃏 **Koniec gry**\n"
-                f"Ty: {self.game['player']} (= {player_value})\n"
-                f"Krupier: {dealer} (= {dealer_value})\n\n"
+                f"Ty: {self.game['player']} (= {pv})\n"
+                f"Krupier: {dealer} (= {dv})\n\n"
                 f"{result}\n"
                 f"Saldo: {p['balance']} 💰"
             ),
             view=None
         )
 
-    # 🎴 HIT
     @discord.ui.button(label="🎴 Hit", style=discord.ButtonStyle.green)
     async def hit(self, interaction, button):
         self.game["player"].append(draw_card())
         value = hand_value(self.game["player"])
 
         if value > 21:
-            p = get_player(self.ctx.author.id)
+            p = get_player(interaction.user.id)
             p["balance"] -= self.game["bet"]
             p["losses"] += 1
             p["games"] += 1
@@ -134,7 +136,6 @@ class BlackjackView(discord.ui.View):
                 content=(
                     f"💥 **Bust!**\n"
                     f"Karty: {self.game['player']} (= {value})\n"
-                    f"Strata: {self.game['bet']} 💰\n"
                     f"Saldo: {p['balance']} 💰"
                 ),
                 view=None
@@ -145,60 +146,40 @@ class BlackjackView(discord.ui.View):
                 view=self
             )
 
-    # ✋ STAND
     @discord.ui.button(label="✋ Stand", style=discord.ButtonStyle.red)
     async def stand(self, interaction, button):
-        await self.finish_game(interaction)
+        await self.finish(interaction)
 
-    # 💸 DOUBLE DOWN
     @discord.ui.button(label="💸 Double Down", style=discord.ButtonStyle.blurple)
-    async def double_down(self, interaction, button):
-        p = get_player(self.ctx.author.id)
-
+    async def double(self, interaction, button):
+        p = get_player(interaction.user.id)
         if p["balance"] < self.game["bet"]:
             await interaction.response.send_message(
-                "❌ Brak środków na Double Down.",
+                "❌ Brak środków na Double Down",
                 ephemeral=True
             )
             return
 
         self.game["bet"] *= 2
         self.game["player"].append(draw_card())
+        await self.finish(interaction)
 
-        value = hand_value(self.game["player"])
-
-        if value > 21:
-            p["balance"] -= self.game["bet"]
-            p["losses"] += 1
-            p["games"] += 1
-            save_players()
-            self.stop()
-
-            await interaction.response.edit_message(
-                content=(
-                    f"💥 **Bust po Double Down!**\n"
-                    f"Karty: {self.game['player']} (= {value})\n"
-                    f"Strata: {self.game['bet']} 💰\n"
-                    f"Saldo: {p['balance']} 💰"
-                ),
-                view=None
-            )
-            return
-
-        await self.finish_game(interaction)
-
-# ---------- KOMENDY ----------
-
+# ---------- COMMANDS ----------
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"✅ Zalogowano jako {bot.user}")
 
-@bot.command()
-async def blackjack(ctx, bet: int):
-    p = get_player(ctx.author.id)
+@bot.tree.command(name="blackjack", description="Zagraj w BlackJacka")
+@app_commands.describe(bet="Kwota zakładu")
+async def blackjack(interaction: discord.Interaction, bet: int):
+    p = get_player(interaction.user.id)
 
     if bet <= 0 or bet > p["balance"]:
-        await ctx.send("❌ Nieprawidłowy zakład.")
+        await interaction.response.send_message(
+            "❌ Nieprawidłowy zakład",
+            ephemeral=True
+        )
         return
 
     game = {
@@ -207,19 +188,44 @@ async def blackjack(ctx, bet: int):
         "bet": bet
     }
 
-    view = BlackjackView(ctx, game)
-    await ctx.send(view.render(), view=view)
+    view = BlackjackView(interaction, game)
+    await interaction.response.send_message(view.render(), view=view)
 
-@bot.command()
-async def stats(ctx):
-    p = get_player(ctx.author.id)
-    await ctx.send(
-        f"📊 **Statystyki {ctx.author.name}**\n"
+@bot.tree.command(name="daily", description="Daily reward 6000 💰 (24h)")
+async def daily(interaction: discord.Interaction):
+    p = get_player(interaction.user.id)
+    now = int(time.time())
+    cooldown = 24 * 60 * 60
+
+    remaining = cooldown - (now - p["last_daily"])
+    if remaining > 0:
+        h = remaining // 3600
+        m = (remaining % 3600) // 60
+        await interaction.response.send_message(
+            f"⏳ Daily za {h}h {m}m",
+            ephemeral=True
+        )
+        return
+
+    p["balance"] += 6000
+    p["last_daily"] = now
+    save_players()
+
+    await interaction.response.send_message(
+        f"🎁 **DAILY!** +6000 💰\nSaldo: {p['balance']} 💰"
+    )
+
+@bot.tree.command(name="stats", description="Twoje statystyki")
+async def stats(interaction: discord.Interaction):
+    p = get_player(interaction.user.id)
+    await interaction.response.send_message(
+        f"📊 **Statystyki**\n"
         f"💰 Saldo: {p['balance']}\n"
         f"🎲 Gry: {p['games']}\n"
         f"🏆 Wygrane: {p['wins']}\n"
         f"💀 Przegrane: {p['losses']}\n"
-        f"🤝 Remisy: {p['draws']}"
+        f"🤝 Remisy: {p['draws']}",
+        ephemeral=True
     )
 
 bot.run(TOKEN)
