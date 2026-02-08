@@ -52,10 +52,11 @@ class BlackjackView(discord.ui.View):
             inline=False
         )
 
-        embed.add_field(
-            name="🎩 Krupier",
-            value=f"{dealer_hand}\n"
-                  f"{'' if not reveal else f'**({hand_value(self.game['dealer'])})**'}",
+       embed.add_field(
+           name="🎩 Krupier",
+           value=f"{dealer_hand}\n{dealer_value}",
+                    if reveal:
+                     dealer_value = f"**({hand_value(self.game['dealer'])})**",
             inline=False
         )
 
